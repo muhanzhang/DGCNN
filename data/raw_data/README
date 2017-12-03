@@ -1,0 +1,18 @@
+=== ABOUT ===
+
+This folder contains the raw graph datasets in Matlab format.
+
+For each data set X, the Matlab command
+  load X
+loads into the memory a struct array containing graphs, and a column vector lx containing 
+a class label for each graph.
+X(i).am is the adjacency matrix of the i'th graph (has been transformed to full format using utils/sparse2full.m);
+X(i).al is the adjacency list of the i'th graph;
+X(i).nl.values is a column vector of node labels for the i'th graph;
+X(i).el (not always available) contains edge labels for the i'th graph.
+
+Example: 
+typing "load MUTAG" in MATLAB
+loads a 188 element array of graph structures, called MUTAG, and a column of 188 numbers, 
+each of which indicates the class that the corresponding graph belongs to.
+

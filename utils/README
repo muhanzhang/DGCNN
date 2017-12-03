@@ -1,0 +1,13 @@
+=== ABOUT ===
+
+This file contains some utility programs for data processing, some extra graph layers, and some testing programs for debugging.
+
+The most important script is the generate_torch_graphs.lua. Please run this:
+th generate_torch_graphs.lua
+in order to generate graph files that are readable by torch. This script read .mat graph datasets from data/raw_data/ and generate .dat graph datasets in data/
+
+If you download new datasets (the same format as the Weisfeiler-Lehman Toolbox) into data/raw_data/ , you can also use the generate_torch_graphs.lua script to process them. However, you need to make sure the new datasets store adjacency matrices in full format (sparse matrices are not supported by matio). We provide sparse2full.m for this purpose.
+
+The test*.lua files are used to check the implementation of backpropagation. If you want to run them, you need to copy them into the main folder.
+
+

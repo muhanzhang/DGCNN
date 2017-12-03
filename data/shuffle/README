@@ -1,0 +1,3 @@
+=== ABOUT ===
+
+This folder is for saving the fixed shuffle orders of each dataset, in order to compare under the same train/val/test splits.
