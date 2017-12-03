@@ -32,7 +32,7 @@ which transforms the .mat graph datasets in "data/raw_data/" into .dat format. T
 
 In case you cannot install "torch.matio", we also provide the converted ".dat" for downloading directly [\[Torch graph datasets\]](https://drive.google.com/open?id=1vx19a8UTfj7vboafaoRtgIFv-dIqvhxl).
 
-To run DGCNN on dataset "DD" (whose maximum node label is 89), with learning rate 1e-5, maximum epoch number 100, under the default train/val/test ratio 0.8/0.1/0.1, just type:
+To run DGCNN on dataset "DD" (whose maximum node label is 89), with learning rate 1e-5, maximum epoch number 100, just type:
 
     th main.lua -dataName DD -maxNodeLabel 89 -learningRate 1e-5 -maxEpoch 100
 

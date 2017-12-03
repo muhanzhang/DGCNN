@@ -32,15 +32,14 @@ local function commandLine()
    -- dataset options
    cmd:option('-dataName',        'MUTAG',       'Specify which dataset to use')
    cmd:option('-nClass',          2,             'Specify # of classes of dataset')
-   cmd:option('-trainRatio', 	  .8,            'Specify size of train set')
-   cmd:option('-valRatio', 	      .1,            'Specify size of validation set')
+   cmd:option('-trainRatio', 	  .9,            'Specify size of train set')
+   cmd:option('-valRatio', 	      0,            'Specify size of validation set')
    cmd:option('-maxNodeLabel',    7,             'Specify maximum node label, required if nodeLabel = oneHot')
    -- graph convolution settings
    cmd:option('-bias',            false,         'Whether to include bias b in A(XW+b)')
    cmd:option('-convMatrix',      'rwAplusI',    'Specify which propagation model to use: symAplusI, AplusI, A, rwAplusI')
    cmd:option('-alpha',           1,             'Specify the relative weight of A to I, i.e., I + alpha * A')
    cmd:option('-nodeLabel',       'oneHot',      'Specify node label encoding schemes: original, allOne, nDegree, oneHot, oneHot+nDegree')
-   cmd:option('-shareConv',       false,         'whether to share parameters of GraphConv layers')
    cmd:option('-originalFeature', false,         'whether to add original node features into GraphConv feature vectors')
    cmd:option('-inputChannel',    0,             'Specify # of input channels of the first GraphConv layer. If nodeLabel = original, then this must be specified; otherwise this will be automatically set.')
    cmd:option('-outputChannels',  '32 32 32 1',  'Specify # of output channels of GraphConv layers')
@@ -71,7 +70,7 @@ local function commandLine()
    cmd:option('-decay_lr', 	      1e-6,          'learning rate decay (SGD only)')
    cmd:option('-momentum', 	      0.9,           'momentum (SGD only)')
    cmd:option('-l2reg', 		  0,             'l2 regularization is not recommended since it will update weights of GraphConv layers > r too')
-   cmd:option('-maxEpoch', 	      300,           'maximum # of epochs to train for')
+   cmd:option('-maxEpoch', 	      100,           'maximum # of epochs to train for')
    cmd:option('-save', 	          'result',      'result saving position')
    cmd:option('-gpu', 	          1,             'Specify default GPU')
    cmd:option('-log', 	          false,         'whether to log all screen outputs')
@@ -80,6 +79,8 @@ local function commandLine()
    cmd:text()
 
    local opt = cmd:parse(arg or {})
+
+   print('Running on '..opt.dataName..'...')
 
    if opt.fixed_shuffle ~= 'none' then
       torch.manualSeed(opt.seed) -- fixed seed and fixed shuffle for repeatable experiments
@@ -154,7 +155,6 @@ local function commandLine()
    end
    opt.outputChannels = tmp
    opt.nGLayers = #opt.outputChannels  -- # of GraphConv layers
-   opt.effectiveTotalOutputChannels = opt.totalOutputChannels
 
    local tmp = {}
    for i in string.gmatch(opt.TCChannels, "%S+") do
@@ -169,7 +169,7 @@ local function commandLine()
    opt.TCkw = tmp
    
    if opt.TCkw[1] == 0 then
-      opt.TCkw[1] = opt.effectiveTotalOutputChannels
+      opt.TCkw[1] = opt.totalOutputChannels
    end
 
    if opt.batch == false then
@@ -202,60 +202,35 @@ local function create_model(opt)
 
    -- Recurrent GraphConv layers
    local c0 = nn.Sequential()  -- the whole graph convolution structure
-   local c = {}  -- one condition of a branch
    local b = {}  -- branches
+   local c = {}  -- one condition of the branch
    for i = 1, opt.nGLayers do
       -- add recurrent units from last to first
       local j = opt.nGLayers - i
       c[j] = nn.Sequential()
-      if opt.shareConv then -- if opt.sharConv, must use exactly the same graph conv layers
-                            -- i.e., the same # of input and output channels in each layer
-         if i == 1 then -- the last recurrent unit
-            c[j]:add(nn.GraphConv(opc[j], opc[j+1]), opt.bias)
-            c[j]:add(opt.nonlinear())
-            c[j]:add(nn.GraphSelectTable(2))
+      if i == 1 then  -- the last layer
+         if opt.oneWeight then  -- if fixing the GraphConv weights to 1, i.e., do not learn weights through backpropagation
+            c[j]:add(nn.GraphConv(opc[j], opc[j+1], opt.bias, 1))
          else
-            local convCopy = c[j+1].modules[1]:clone('weight', 'bias', 'gradWeight', 'gradBias')
-            c[j]:add(convCopy)
-            c[j]:add(opt.nonlinear())
-            c[j]:add(b[j+1])
+            c[j]:add(nn.GraphConv(opc[j], opc[j+1], opt.bias))
          end
-
-      else
-         if i == 1 then  -- last recurrent unit does not have any nonlinearity, or have?
-            if opt.oneWeight then
-               c[j]:add(nn.GraphConv(opc[j], opc[j+1], opt.bias, 1))
-            else
-               c[j]:add(nn.GraphConv(opc[j], opc[j+1], opt.bias))
-            end
-            c[j]:add(opt.nonlinear())  -- add to see performance
-            c[j]:add(nn.GraphSelectTable(2))
-         elseif j > opt.nGLayers - 1 then
-            if opt.oneWeight then  -- not use random weight, but fixed weight = 1, bias = 0 in layers > H, and use tanh
-               c[j]:add(nn.GraphConv(opc[j], opc[j+1], opt.bias, 1))
-               --c[j]:add(nn.GraphTanh())
-               c[j]:add(opt.nonlinear())
-            else
-               c[j]:add(nn.GraphConv(opc[j], opc[j+1], opt.bias))
-               c[j]:add(opt.nonlinear())
-            end
-            c[j]:add(b[j+1])
-         else             -- only first few effective graph convolution layers (j=0, 1, ..., r-1) have user-defined nonlinearity and EdgeDropout
-            if opt.oneWeight then
-               c[j]:add(nn.GraphConv(opc[j], opc[j+1], opt.bias, 1))
-            else
-               c[j]:add(nn.GraphConv(opc[j], opc[j+1], opt.bias))
-            end
-            if opt.edgeDropout ~= 0 then
-               c[j]:add(nn.EdgeDropout(opt.edgeDropout))
-            end
-            c[j]:add(opt.nonlinear())
-            c[j]:add(b[j+1])
+         c[j]:add(opt.nonlinear())
+         c[j]:add(nn.GraphSelectTable(2))
+      else  -- graph convolution layers (j=0, 1, ..., r-1) other than the last layer can have EdgeDropout
+         if opt.oneWeight then
+            c[j]:add(nn.GraphConv(opc[j], opc[j+1], opt.bias, 1))
+         else
+            c[j]:add(nn.GraphConv(opc[j], opc[j+1], opt.bias))
          end
+         if opt.edgeDropout ~= 0 then  -- edge dropout
+            c[j]:add(nn.EdgeDropout(opt.edgeDropout))
+         end
+         c[j]:add(opt.nonlinear())
+         c[j]:add(b[j+1])
       end
       
-      if j == 0 then
-         if opt.originalFeature then
+      if j == 0 then  -- the first GraphConv layer
+         if opt.originalFeature then  -- if using original node labels/features
             b0 = nn.GraphConcatTable()
             local tmp = nn.Sequential()
             tmp:add(nn.GraphSelectTable(2))
@@ -279,20 +254,20 @@ local function create_model(opt)
    net:add(c0)
    net:add(nn.FlattenTable())
    net:add(nn.JoinTable(3))
-   if opt.noSortPooling then
+   if opt.noSortPooling then  -- if removing SortPooling, i.e., using original orders
       net:add(nn.Padding(2, opt.k))
       net:add(nn.Narrow(2, 1, opt.k))
-   elseif opt.sumNodeFeatures then
+   elseif opt.sumNodeFeatures then  -- if using summed node features
       net:add(nn.Sum(1, 2)) -- sum all node features as a graph-level feature
    else
-      net:add(nn.SortPooling(opt.k))
+      net:add(nn.SortPooling(opt.k)) -- default, use SortPooling
    end
 
    if opt.sumNodeFeatures == false then
-      -- now input becomes a (K * totalOutputChannels) tensor
+      -- now input becomes a (k * totalOutputChannels) tensor
       net:add(nn.View(-1, opt.k * opt.totalOutputChannels, 1))
       -- 1-D convolution layers
-      net:add(nn.TemporalConvolution(1, opt.TCChannels[1], opt.TCkw[1], opt.totalOutputChannels))  -- now K * TCChannels[1]
+      net:add(nn.TemporalConvolution(1, opt.TCChannels[1], opt.TCkw[1], opt.totalOutputChannels))  -- now k * TCChannels[1]
       net:add(nn.ReLU())
       local nFrame = opt.k  -- record number of frames (vertices) after each conv
       for i = 1, #(opt.TCChannels)-1 do
@@ -394,7 +369,8 @@ local function load_data(opt)
    if opt.k == 0 then
       local tmp = torch.sort(Ns)
       opt.k = tmp[math.ceil(0.6 * N)]
-      print(opt.k)
+      -- erratum --
+      -- In paper, I said k is set so that 60% graphs have #nodes > k, which should be 40% there.
    end
 
 end
