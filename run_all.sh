@@ -18,7 +18,7 @@ for i in $(seq 1 10)  # to run all random cv splits in one time
 do
   for j in $(seq 1 10)
   do
-    echo "...............$j..............."
+    echo "...............$i-$j..............."
     case ${data} in
     DD)
       th main.lua -dataName DD -maxNodeLabel 89 -learningRate 1e-5 -fixed_shuffle "${i}_${j}" -maxEpoch 200 -save "${save}" $common -outputChannels '32 32 32 1'
@@ -61,4 +61,4 @@ stop=`date +%s`
 echo "End of this run" >> $fileName
 echo "The total running time is $[stop - start] seconds."
 echo "The accuracy results for ${data} are as follows:"
-tail -n 100 ${fileName}
+cat ${fileName}
