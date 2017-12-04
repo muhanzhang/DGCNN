@@ -42,7 +42,7 @@ To repeatedly run DGCNN on some dataset using different shuffle orders, you can 
 
 which runs DGCNN on dataset XXX with the ith GPU of your machine for 100 times, using the shuffle orders stored in "data/shuffle".
 
-The main program of DGCNN is in "main.lua", please refer to it for more advanced functions and parameters to play with!
+The main program of DGCNN is in "main.lua", please refer to it for more advanced functions to play with!
 
 How to compare with graph kernels
 ---------------------------------
@@ -55,9 +55,13 @@ to compute the kernel matrices of WL, GK and RW. Run:
     
     Compute_PK_kernels.m
 
-to compute the kernel matrices of PK (since the PK software uses a different graph format). We also provide the precomputed kernel matrices [\[Kernel matrices\]](https://drive.google.com/open?id=1TneR7RJtRioFcceiIaP6njeKppVbeFFC).
+to compute the kernel matrices of PK (since the PK software uses a different graph format). We also provide the precomputed kernel matrices for downloading in case you don't want to compute them by yourselves (some of them take really long time). [\[Kernel matrices\]](https://drive.google.com/open?id=1TneR7RJtRioFcceiIaP6njeKppVbeFFC).
 
-To run graph kernels, run: compare.m in MATLAB, then the accuracy results of all graph kernels will be reported. At the same time, a fixed data shuffling order will be generated and saved in "data/shuffle" for each dataset (thus their train/val/test splits are fixed), for a fair comparison with DGCNN. These shuffle orders are already included in this toolbox. Change the *rand_start* inside compare.m to generate your own shuffle orders.
+To run graph kernels, run: 
+
+    compare.m
+    
+in MATLAB, then the accuracy results of all graph kernels will be reported. At the same time, a fixed data shuffling order will be generated and saved in "data/shuffle" for each dataset (thus their train/val/test splits are fixed). These shuffle orders are already included in this toolbox. Change the *rand_start* inside compare.m to generate your own shuffle orders.
 
 Required libraries
 ------------------
