@@ -55,7 +55,7 @@ to compute the kernel matrices of WL, GK and RW. Run:
     
     Compute_PK_kernels.m
 
-to compute the kernel matrices of PK (since the PK software uses a different graph format). We also provide the precomputed kernel matrices for downloading in case you don't want to compute them by yourselves (some of them take really long time!). [\[Kernel matrices\]](https://drive.google.com/open?id=1TneR7RJtRioFcceiIaP6njeKppVbeFFC)
+to compute the kernel matrices of PK (since the PK software uses a different graph format). We also provide the precomputed kernel matrices for downloading in case you don't want to compute them by yourselves. (Some of them take really long time!) [\[Kernel matrices\]](https://drive.google.com/open?id=1TneR7RJtRioFcceiIaP6njeKppVbeFFC)
 
 To run graph kernels, run: 
 
