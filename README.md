@@ -87,7 +87,7 @@ Reference
 
 If you find the code useful, please cite our paper:
 
-    @inproceedings{zhang2018an,
+    @inproceedings{zhang2018end,
       title={An End-to-End Deep Learning Architecture for Graph Classification.},
       author={Zhang, Muhan and Cui, Zhicheng and Neumann, Marion and Chen, Yixin},
       booktitle={AAAI},
