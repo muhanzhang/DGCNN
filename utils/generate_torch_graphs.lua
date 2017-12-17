@@ -14,7 +14,7 @@ for _, dataname in pairs(Datasets) do
    local datapath = '../data/raw_data/'
    local tmp = matio.load(datapath..dataname..'.mat')
    local tmp_label = tmp[string.lower('l'..dataname)]
-   local tmp_instance = tmp[dataname]
+   local tmp_instance = tmp[dataname][1]
 
    -- transform labels to standard 1, 2, ..., n classes
    local label_map = {}
