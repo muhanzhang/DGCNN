@@ -62,7 +62,7 @@ for ith_data = 1: size(datasets, 1)
         disp('No edge attributes for this dataset.')
     end
     
-    A = sparse(edges(:,1), edges(:,2), edge_attr(:,1), num_nodes, num_nodes);
+    A = spones(sparse(edges(:,1), edges(:,2), edge_attr(:,1), num_nodes, num_nodes));
     
     save(strcat(dataset, '_mat.mat'), 'A', '-append');
 end

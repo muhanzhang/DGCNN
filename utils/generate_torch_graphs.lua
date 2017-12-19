@@ -5,7 +5,7 @@
 matio = require 'matio'
 require 'paths'
 
-Datasets = {'DD', 'MUTAG', 'NCI1', 'ptc', 'proteins', 'COLLAB', 'IMDBBINARY', 'IMDBMULTI'}
+Datasets = {'MUTAG', 'DD', 'NCI1', 'ptc', 'proteins', 'COLLAB', 'IMDBBINARY', 'IMDBMULTI'}
 
 for _, dataname in pairs(Datasets) do
    print(dataname)
@@ -13,7 +13,7 @@ for _, dataname in pairs(Datasets) do
    local label = {}
    local datapath = '../data/raw_data/'
    local tmp = matio.load(datapath..dataname..'.mat')
-   local tmp_label = tmp[string.lower('l'..dataname)]
+   local tmp_label = tmp[string.lower('l'..dataname)]:type('torch.ByteTensor') -- convert to bytetensor to save space
    local tmp_instance = tmp[dataname][1]
 
    -- transform labels to standard 1, 2, ..., n classes
@@ -39,17 +39,16 @@ for _, dataname in pairs(Datasets) do
    for i = 1, tmp_label:size(1) do
       if i % 100 == 0 then print(i) end
       local ins = tmp_instance[i]
-      if #ins['nl'] == 0 then -- empty
-         if #ins['na'] ~= 0 then
-            local node_information = ins['na'].values
-         else
-            local node_information = {}
-         end
+      local node_information = {}
+      if next(ins.nl)~=nil then -- non-empty
+         node_information = ins['nl'].values:type('torch.ByteTensor')
       else
-         local node_information = ins['nl'].values
+         node_information = torch.ones(ins.am:size(1), 1):type('torch.ByteTensor')
       end
 
-      local tmp1 = {ins['am'], node_information}
+      local tmp1 = {}
+      tmp1[1] = ins['am']:type('torch.ByteTensor')
+      tmp1[2] = node_information
       local tmp2 = tmp_label[i][1]
       instance[i] = tmp1
       label[i] = tmp2

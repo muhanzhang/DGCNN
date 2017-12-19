@@ -1,6 +1,6 @@
 % For converting PK graph format into WL graph format.
 clear all;
-dataset = strvcat('COLLAB', 'IMDBBINARY', 'IMDBMULTI', 'REDDITBINARY');
+dataset = strvcat('COLLAB', 'IMDBBINARY', 'IMDBMULTI');
 for ith_data = 1: size(dataset, 1)
     clear save_struct
     clear save_struct2
@@ -20,7 +20,7 @@ for ith_data = 1: size(dataset, 1)
         if exist('attributes', 'var')
             na.values = attributes(graph_ind == i, :);
         end
-        X(i).am = full(am);
+        X(i).am = full(spones(am));
         X(i).nl = nl;
         X(i).na = na;
         X(i).al = al;

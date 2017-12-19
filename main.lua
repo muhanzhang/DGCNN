@@ -7,13 +7,16 @@ require 'nn'
 require 'cunn'
 require 'cutorch'
 require 'optim'
-require 'SortPooling'
-require 'GraphConv'
-require 'GraphReLU'
-require 'GraphTanh'
-require 'EdgeDropout'
-require 'GraphSelectTable'
-require 'GraphConcatTable'
+
+-- load DGCNN-related modules
+folderOfThisFile = path.abspath(debug.getinfo(1).short_src):match("(.*[/\\])")
+include(folderOfThisFile..'SortPooling.lua')
+include(folderOfThisFile..'GraphConv.lua')
+include(folderOfThisFile..'GraphReLU.lua')
+include(folderOfThisFile..'GraphTanh.lua')
+include(folderOfThisFile..'EdgeDropout.lua')
+include(folderOfThisFile..'GraphSelectTable.lua')
+include(folderOfThisFile..'GraphConcatTable.lua')
 
 ------------------------------------------------------------------------
 --                              Parser                                --
@@ -74,6 +77,7 @@ local function commandLine()
    cmd:option('-save', 	          'result',      'result saving position')
    cmd:option('-gpu', 	          1,             'Specify default GPU')
    cmd:option('-log', 	          false,         'whether to log all screen outputs')
+   cmd:option('-printAUC', 	      false,         'whether to print AUC score')
    cmd:option('-repeatSave',      true,          'whether to append final results of each run to a file every time for repeated experiments')
 
    cmd:text()
@@ -327,7 +331,7 @@ local function load_data(opt)
    local Ntest = N - Ntrain - Nvalidation
    local shuffle_idx = torch.randperm(N)
    if opt.fixed_shuffle ~= 'none'  then
-      shuffle_idx = opt.shuffle_idx:resizeAs(shuffle_idx)
+      shuffle_idx = opt.shuffle_idx:typeAs(shuffle_idx):resizeAs(shuffle_idx)
    end
    if opt.debug then   
       shuffle_idx = torch.Tensor(#dataset.label)
@@ -342,7 +346,7 @@ local function load_data(opt)
    for i = 1, Ntrain do
       trainset.instance[i] = dataset.instance[shuffle_idx[i]]
       trainset.instance[i][2] = processNodeLabel(trainset.instance[i][2], trainset.instance[i][1])
-      trainset.instance[i][1] = convMatrix(trainset.instance[i][1])
+      trainset.instance[i][1] = convMatrix(trainset.instance[i][1]:type('torch.FloatTensor'))
       trainset.label[i] = dataset.label[shuffle_idx[i]]
       local tmp = trainset.instance[i][1]:size(1)  -- ns: for recording the sizes of graphs
       trainset.ns[i] = tmp
@@ -351,7 +355,7 @@ local function load_data(opt)
    for i = Ntrain+1, Ntrain+Nvalidation do
       valset.instance[i - Ntrain] = dataset.instance[shuffle_idx[i]]
       valset.instance[i - Ntrain][2] = processNodeLabel(valset.instance[i - Ntrain][2], valset.instance[i - Ntrain][1])
-      valset.instance[i - Ntrain][1] = convMatrix(valset.instance[i - Ntrain][1])
+      valset.instance[i - Ntrain][1] = convMatrix(valset.instance[i - Ntrain][1]:type('torch.FloatTensor'))
       valset.label[i - Ntrain] = dataset.label[shuffle_idx[i]]
       local tmp = valset.instance[i - Ntrain][1]:size(1)
       valset.ns[i - Ntrain] = tmp
@@ -360,7 +364,7 @@ local function load_data(opt)
    for i = Ntrain+Nvalidation+1, N do
       testset.instance[i - Ntrain - Nvalidation] = dataset.instance[shuffle_idx[i]]
       testset.instance[i - Ntrain - Nvalidation][2] = processNodeLabel(testset.instance[i - Ntrain - Nvalidation][2], testset.instance[i - Ntrain - Nvalidation][1])
-      testset.instance[i - Ntrain - Nvalidation][1] = convMatrix(testset.instance[i - Ntrain - Nvalidation][1])
+      testset.instance[i - Ntrain - Nvalidation][1] = convMatrix(testset.instance[i - Ntrain - Nvalidation][1]:type('torch.FloatTensor'))
       testset.label[i - Ntrain - Nvalidation] = dataset.label[shuffle_idx[i]]
       local tmp = testset.instance[i - Ntrain - Nvalidation][1]:size(1)
       testset.ns[i - Ntrain - Nvalidation] = tmp
@@ -569,6 +573,7 @@ function test(dataset, ensembleTest)
       Pred = torch.zeros(#dataset.label, opt.nClass):cuda()
    end
 
+   scores = torch.Tensor(#dataset.label):cuda()
    -- disp progress
    for t = 1, #dataset.label, opt.batchSize do
       -- bound batchSize
@@ -601,6 +606,7 @@ function test(dataset, ensembleTest)
       
       -- test sample
       local pred = net:forward(inputs)
+      scores[{ {(t-1)*batchSize+1, math.min(t*batchSize, #dataset.label)}}] = pred[{{}, {2}}]
       if ensembleTest then 
          Pred[{{t, t + batchSize - 1}, {}}] = pred
       end
@@ -627,12 +633,22 @@ function test(dataset, ensembleTest)
 
    if ensembleTest then return Pred end
 
+   if opt.printAUC then
+      metrics = require 'metrics'
+      local labelTensor = torch.Tensor(dataset.label):cuda()
+      roc_points, thresholds = metrics.roc.points(scores, labelTensor, 1, 2)
+      auc = metrics.roc.area(roc_points)
+      print(auc)
+   end
+
    return testAccuracy, testError
  end
 
 ------------------------------------------------------------------------
 --                           Main Program                             --
 ------------------------------------------------------------------------
+
+torch.setdefaulttensortype('torch.FloatTensor')
 
 -- prepare model and data
 opt = commandLine()
@@ -835,6 +851,13 @@ if opt.ensemble ~= 0 then
 end
 
 
+if opt.printAUC then
+   tmp = io.open(paths.concat(opt.save, opt.dataName, 'finalAUC'), 'w');
+   tmp:write(auc, '\n')
+   tmp:close()
+end
+
+
 -- update repeatSave, append current results to trainAcc/testAcc
 if opt.repeatSave == true then
    tmp = io.open(paths.concat(opt.save, opt.dataName, 'trainAcc'), 'a');
@@ -858,6 +881,7 @@ if opt.repeatSave == true then
    end
    io.close()
 end
+
 
 -- plot the accuracy and error curves of this run
 accLogger:plot()
