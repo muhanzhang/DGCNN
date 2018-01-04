@@ -30,13 +30,15 @@ local function commandLine()
    -- general options
    cmd:option('-seed', 		      100,           'fixed input seed for repeatable experiments')
    cmd:option('-debug', 	      false,         'debug mode (output intermediate results after each training epoch)')
-   cmd:option('-fixed_shuffle',   'none',        'x_y means using data/shuffle/$dataNamex_y.mat as fixed shuffle indices; otherwise use random shuffle indices')
+   cmd:option('-fixed_shuffle',   'random',      'x_y means using data/shuffle/$dataNamex_y.mat as fixed shuffle indices; otherwise "random" means using random shuffle indices, "original" means using original order (no shuffle at first)')
    cmd:option('-ensemble',        0,             'if x~=0, use the intermediate nets every x epochs as an ensemble. Using ensemble needs to set -valRatio 0')
+   cmd:option('-multiLabel',      false,         'true when doing multi-label classification, use the multi-label one vs all cross entropy loss')
    -- dataset options
    cmd:option('-dataName',        'MUTAG',       'Specify which dataset to use')
    cmd:option('-nClass',          2,             'Specify # of classes of dataset')
    cmd:option('-trainRatio', 	  .9,            'Specify size of train set')
-   cmd:option('-valRatio', 	      0,            'Specify size of validation set')
+   cmd:option('-valRatio', 	      0,             'Specify size of validation set. Test set size will be 1 - trainRatio - valRatio')
+   cmd:option('-testNumber', 	  0,             'if specified, it will overwrite the above trainRatio and valRatio, and use the last "testNumber" examples in the data as the test set, while splitting the remaining data as train (90%) and validation (10%)')
    cmd:option('-maxNodeLabel',    7,             'Specify maximum node label, required if nodeLabel = oneHot')
    -- graph convolution settings
    cmd:option('-bias',            false,         'Whether to include bias b in A(XW+b)')
@@ -52,7 +54,7 @@ local function commandLine()
    -- SortPooling options
    cmd:option('-noSortPooling',   false,         'no SortPooling, performs only pooling without sorting.')
    cmd:option('-sumNodeFeatures', false,         'no SortPooling, direclty sum node features followed by only dense layers.')
-   cmd:option('-k',               0,             'Specify k in SortPooling layer. If not specified, k is set so that 60% graphs in the dataset have size >= k.')
+   cmd:option('-k',               0.4,           'Specify the integer k (how many nodes to keep) in SortPooling. If you set 0 < k <= 1, then k will be converted to an integer so that k% graphs in the dataset has nodes more than this integer.')
    -- 1-D convolution and fully-connected layers' settings
    cmd:option('-TCChannels',      '16 32',       'Specify the # of channels of the 1-D temporal convolution layers')
    cmd:option('-TCkw',            '0 5',         'Specify the kernel width of temporal convolution layers, 0 means to use the total # of outputChannels of the effective GraphConv layers (only for first layer)')
@@ -86,7 +88,7 @@ local function commandLine()
 
    print('Running on '..opt.dataName..'...')
 
-   if opt.fixed_shuffle ~= 'none' then
+   if opt.fixed_shuffle ~= 'random' and opt.fixed_shuffle ~= 'original' then
       torch.manualSeed(opt.seed) -- fixed seed and fixed shuffle for repeatable experiments
       cutorch.manualSeedAll(opt.seed) 
       matio = require 'matio'
@@ -308,11 +310,14 @@ local function create_model(opt)
       prev = opt.nhu
    end
    net:add(nn.Linear(prev, opt.nClass))
-   net:add(nn.LogSoftMax())
+   if not opt.multiLabel then
+      net:add(nn.LogSoftMax())
+   end
    net = net:cuda()
 
    -- Criterion
    criterion = nn.ClassNLLCriterion()
+   if opt.multiLabel then criterion = nn.MultiLabelSoftMarginCriterion() end
    criterion = criterion:cuda()
    print(net)
 end
@@ -329,8 +334,17 @@ local function load_data(opt)
    local Ntrain = math.ceil(N * train_ratio)
    local Nvalidation = math.ceil(N * (train_ratio + validation_ratio)) - Ntrain
    local Ntest = N - Ntrain - Nvalidation
-   local shuffle_idx = torch.randperm(N)
-   if opt.fixed_shuffle ~= 'none'  then
+   if opt.testNumber ~= 0 then
+      Ntest = opt.testNumber
+      Ntrain = math.ceil((N - Ntest) * 0.9)
+      Nvalidation = N - Ntrain - Ntest
+   end
+   local shuffle_idx = torch.Tensor(N)
+   if opt.fixed_shuffle == 'random' then
+      shuffle_idx = torch.randperm(N)
+   elseif opt.fixed_shuffle == 'original' then
+      for j = 1, N do shuffle_idx[j] = j end
+   else
       shuffle_idx = opt.shuffle_idx:typeAs(shuffle_idx):resizeAs(shuffle_idx)
    end
    if opt.debug then   
@@ -370,12 +384,13 @@ local function load_data(opt)
       testset.ns[i - Ntrain - Nvalidation] = tmp
       Ns[i] = tmp
    end
-   if opt.k == 0 then
+   if opt.k < 1 then
       local tmp = torch.sort(Ns)
-      opt.k = tmp[math.ceil(0.6 * N)]
+      opt.k = tmp[math.ceil((1-opt.k) * N)]
       -- erratum --
       -- In paper, I said k is set so that 60% graphs have #nodes > k, which should be 40% there.
    end
+   if opt.k < 10 then opt.k = 10 end  -- set a lower bound for k, otherwise making 1D convolution infeasible (a small k may result in a negative number of frames after 1D convolutions)
 
 end
 
@@ -489,6 +504,7 @@ function train(dataset)
       inputs[1] = torch.zeros(batchSize, nMax, nMax):cuda()
       inputs[2] = torch.zeros(batchSize, nMax, dataset.instance[1][2]:size(2)):cuda()
       local targets = torch.Tensor(batchSize):cuda()
+      if opt.multiLabel then targets = torch.Tensor(batchSize, opt.nClass):cuda() end
       local batchCount = 0
       for i = t, t + batchSize - 1 do
          batchCount = batchCount + 1
@@ -518,9 +534,19 @@ function train(dataset)
          net:backward(inputs, df_do)
 
          local tmpmax, outputlabels = torch.max(output, 2)
-         confusion:batchAdd(outputlabels, targets)
 
-         return f,gradParameters
+         if opt.multiLabel then
+            local output_scores = torch.cdiv(torch.exp(output),  (1+torch.exp(output)))
+            local output_labels = (torch.sign(output_scores - 0.5) + 1) / 2
+            true_pos = true_pos + torch.sum(torch.cmul(output_labels, targets), 1)
+            npos = npos + torch.sum(output_labels, 1)
+            ntpfn = ntpfn + torch.sum(targets, 1)
+         else
+            confusion:batchAdd(outputlabels, targets)
+         end
+            
+
+         return f, gradParameters
       end
 
       local old_params = parameters:clone()
@@ -543,14 +569,32 @@ function train(dataset)
    print(trainError)
 
    -- print confusion matrix
-   print(confusion)
-   local trainAccuracy = confusion.totalValid * 100
-   confusion:zero()
-   
+   if opt.multiLabel then
+      true_neg = #dataset.label - (npos + ntpfn - true_pos)
+      trainAccuracy = torch.mean((true_pos + true_neg) / #dataset.label)
+      precision = torch.cdiv(true_pos, npos)
+      recall = torch.cdiv(true_pos, ntpfn)
+      macro_f1 = torch.mean(torch.cdiv(2 * torch.cmul(precision, recall), (precision + recall)))
+      print('Macro F1 Score is '..tostring(macro_f1))
+      print('Mean Training Accuracy is '..tostring(trainAccuracy))
 
+      --[[
+      print(precision)
+      print(recall)
+      print(macro_f1)
+      debug.debug()
+      ]]
+      true_pos = torch.zeros(opt.nClass):cuda()  -- record the # of true positives in each label
+      npos = torch.zeros(opt.nClass):cuda()  -- # of positive predictions
+      ntpfn = torch.zeros(opt.nClass):cuda() -- # of true positive and false negative predictions (# of positive examples)
+   else
+      print(confusion)
+      local trainAccuracy = confusion.totalValid * 100
+      confusion:zero()
+   end
+   
    -- next epoch
    epoch = epoch + 1
-
 
    return trainAccuracy, trainError
 end
@@ -593,6 +637,7 @@ function test(dataset, ensembleTest)
       inputs[1] = torch.zeros(batchSize, nMax, nMax):cuda()
       inputs[2] = torch.zeros(batchSize, nMax, dataset.instance[1][2]:size(2)):cuda()
       local targets = torch.Tensor(batchSize):cuda()
+      if opt.multiLabel then targets = torch.Tensor(batchSize, opt.nClass):cuda() end
       local batchCount = 0
       for i = t, t + batchSize - 1 do
          batchCount = batchCount + 1
@@ -611,7 +656,15 @@ function test(dataset, ensembleTest)
          Pred[{{t, t + batchSize - 1}, {}}] = pred
       end
       local tmpmax, outputlabels = torch.max(pred, 2)
-      confusion:batchAdd(outputlabels, targets)
+      if opt.multiLabel then
+         local output_scores = torch.cdiv(torch.exp(pred), (1+torch.exp(pred)))
+         local output_labels = (torch.sign(output_scores - 0.5) + 1) / 2
+         true_pos = true_pos + torch.sum(torch.cmul(output_labels, targets), 1)
+         npos = npos + torch.sum(output_labels, 1)
+         ntpfn = ntpfn + torch.sum(targets, 1)
+      else
+         confusion:batchAdd(outputlabels, targets)
+      end
 
       -- compute error
       err = criterion:forward(pred, targets)
@@ -624,9 +677,22 @@ function test(dataset, ensembleTest)
    print('test/val error: '..testError)
    
    -- print confusion matrix
-   print(confusion)
-   local testAccuracy = confusion.totalValid * 100
-   confusion:zero()
+   if opt.multiLabel then
+      true_neg = #dataset.label - (npos + ntpfn - true_pos)
+      testAccuracy = torch.mean((true_pos + true_neg) / #dataset.label)
+      precision = torch.cdiv(true_pos, npos)
+      recall = torch.cdiv(true_pos, ntpfn)
+      macro_f1 = torch.mean(torch.cdiv(2 * torch.cmul(precision, recall), (precision + recall)))
+      print('Macro F1 Score is '..tostring(macro_f1))
+      print('Mean Testing/Validation Accuracy is '..tostring(testAccuracy))
+      true_pos = torch.zeros(opt.nClass):cuda()  -- record the # of true positives in each label
+      npos = torch.zeros(opt.nClass):cuda()  -- # of positive predictions
+      ntpfn = torch.zeros(opt.nClass):cuda() -- # of true positive and false negative predictions (# of positive examples)
+   else
+      print(confusion)
+      local testAccuracy = confusion.totalValid * 100
+      confusion:zero()
+   end
 
    -- timing
    time = sys.clock() - time
@@ -676,7 +742,13 @@ end
 parameters,gradParameters = net:getParameters()
 
 -- this matrix records the current confusion across classes
-confusion = optim.ConfusionMatrix(opt.nClass)
+if opt.multiLabel then
+   true_pos = torch.zeros(opt.nClass):cuda()  -- record the # of true positives in each label
+   npos = torch.zeros(opt.nClass):cuda()  -- # of positive predictions
+   ntpfn = torch.zeros(opt.nClass):cuda() -- # of true positive and false negative predictions (# of positive examples)
+else
+   confusion = optim.ConfusionMatrix(opt.nClass)
+end
 
 -- log results to files
 accLogger = optim.Logger(paths.concat(opt.save, opt.dataName, 'accuracy.log'))
@@ -758,7 +830,7 @@ for iter = 1, maxIter do
    end
 
    -- if using validation, test on valset
-   if opt.valRatio ~= 0 then
+   if opt.valRatio ~= 0 or opt.testNumber ~= 0 then
       valAcc, valErr = test(valset)
    end
 
@@ -770,7 +842,7 @@ for iter = 1, maxIter do
    counter = counter + 1
 
    -- if using validation set, update bestNet according to validation error
-   if opt.valRatio ~= 0 then
+   if opt.valRatio ~= 0 or opt.testNumber ~= 0 then
       if valErr < bestValErr then
          counter = 0
          bestValErr = valErr
@@ -818,8 +890,10 @@ end
 
 -- After running all epochs --
 -- see the performance on testset after all epochs
+print()
 print('Performance on test set after all epochs: ')
 print('train Acc: '..trainAcc..' val Acc: '..valAcc..' test Acc: '..testAcc)
+print()
 
 -- if using validation set, load bestNet and see its performance on testset
 if opt.valRatio ~= 0 then
@@ -858,11 +932,18 @@ if opt.printAUC then
 end
 
 
+if opt.multiLabel then
+   tmp = io.open(paths.concat(opt.save, opt.dataName, 'finalF1'), 'w');
+   tmp:write(macro_f1, '\n')
+   tmp:close()
+end
+
+
 -- update repeatSave, append current results to trainAcc/testAcc
 if opt.repeatSave == true then
    tmp = io.open(paths.concat(opt.save, opt.dataName, 'trainAcc'), 'a');
    io.output(tmp)
-   if opt.valRatio == 0 then
+   if opt.valRatio == 0 and opt.testNumber == 0 then
       io.write(trainAcc, '\n')
    else
       io.write(bestTrainAcc, '\n')
@@ -870,7 +951,7 @@ if opt.repeatSave == true then
    io.close()
    tmp = io.open(paths.concat(opt.save, opt.dataName, 'testAcc'), 'a');
    io.output(tmp)
-   if opt.valRatio == 0 then
+   if opt.valRatio == 0 and opt.testNumber == 0 then
       if opt.ensemble ~= 0 then 
          io.write(ensAcc, '\n')
       else
