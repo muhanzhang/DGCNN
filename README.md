@@ -44,6 +44,19 @@ which runs DGCNN on dataset XXX with the ith GPU of your machine for 100 times, 
 
 The main program of DGCNN is in "main.lua", please refer to it for more advanced functions to play with!
 
+How to use your own datasets
+----------------------------
+
+DGCNN reads graph dataset in the format of dataset = {instance={i: {1: A_i, 2: x_i}}, label={i: label_i}}. You can check the format type:
+
+    dataset = torch.load("data/MUTAG.dat")
+
+in the torch command line th.
+
+We also provide a "generate_torch_graphs.lua" in "utils/" which converts standard WL kernel toolbox's graph format to DGCNN format.
+
+There is an option "-testNumber 200" in "main.lua", which allows specifying that the last 200 examples in the dataset is the testing data. This is convenient when you stack your testing data after the training data in the dataset.
+
 How to compare with graph kernels
 ---------------------------------
 
