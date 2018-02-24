@@ -30,7 +30,7 @@ local function commandLine()
    -- general options
    cmd:option('-seed', 		      100,           'fixed input seed for repeatable experiments')
    cmd:option('-debug', 	      false,         'debug mode (output intermediate results after each training epoch)')
-   cmd:option('-fixed_shuffle',   'random',      'x_y means using data/shuffle/$dataNamex_y.mat as fixed shuffle indices; otherwise "random" means using random shuffle indices, "original" means using original order (no shuffle at first)')
+   cmd:option('-fixed_shuffle',   'random',      'x_y means using data/shuffle/$dataNamex_y.mat as fixed shuffle indices; otherwise "random" means using random shuffle indices, "original" means using original order of the dataset (no shuffle at first)')
    cmd:option('-ensemble',        0,             'if x~=0, use the intermediate nets every x epochs as an ensemble. Using ensemble needs to set -valRatio 0')
    cmd:option('-multiLabel',      false,         'true when doing multi-label classification, use the multi-label one vs all cross entropy loss')
    -- dataset options
@@ -77,6 +77,7 @@ local function commandLine()
    cmd:option('-l2reg', 		  0,             'l2 regularization is not recommended since it will update weights of GraphConv layers > r too')
    cmd:option('-maxEpoch', 	      100,           'maximum # of epochs to train for')
    cmd:option('-save', 	          'result',      'result saving position')
+   cmd:option('-dataPos', 	      'data',        'data loading position')
    cmd:option('-gpu', 	          1,             'Specify default GPU')
    cmd:option('-log', 	          false,         'whether to log all screen outputs')
    cmd:option('-printAUC', 	      false,         'whether to print AUC score')
@@ -92,7 +93,7 @@ local function commandLine()
       torch.manualSeed(opt.seed) -- fixed seed and fixed shuffle for repeatable experiments
       cutorch.manualSeedAll(opt.seed) 
       matio = require 'matio'
-      tmp = matio.load('data/shuffle/'..opt.dataName..opt.fixed_shuffle..'.mat')
+      tmp = matio.load(opt.dataPos..'/shuffle/'..opt.dataName..opt.fixed_shuffle..'.mat')
       opt.shuffle_idx = tmp.r_current
    end
 
@@ -327,7 +328,7 @@ end
 
 local function load_data(opt)
    dataname = opt.dataName
-   local dataset = torch.load('data/'..dataname..'.dat')
+   local dataset = torch.load(opt.dataPos..'/'..dataname..'.dat')
    local train_ratio = opt.trainRatio
    local validation_ratio = opt.valRatio
    local N = #dataset.label
@@ -536,15 +537,25 @@ function train(dataset)
          local tmpmax, outputlabels = torch.max(output, 2)
 
          if opt.multiLabel then
+            --[[
+            -- setting 1: whenever score > 0.5, predict as positive
             local output_scores = torch.cdiv(torch.exp(output),  (1+torch.exp(output)))
             local output_labels = (torch.sign(output_scores - 0.5) + 1) / 2
+            ]]
+            -- setting 2: select equal number of positive labels as targets (needs to assume # of labels of each testing data is known)
+            n_target_labels = torch.sum(targets, 2)
+            output_labels = torch.zeros(targets:size()):cuda()
+            for target_i = 1, targets:size(1) do
+               _, pred_i = torch.topk(output[target_i], n_target_labels[target_i][1], 1, true)
+               pred_i = pred_i:type('torch.LongTensor')
+               output_labels[target_i]:indexFill(1, pred_i, 1)
+            end
             true_pos = true_pos + torch.sum(torch.cmul(output_labels, targets), 1)
             npos = npos + torch.sum(output_labels, 1)
             ntpfn = ntpfn + torch.sum(targets, 1)
          else
             confusion:batchAdd(outputlabels, targets)
          end
-            
 
          return f, gradParameters
       end
@@ -573,23 +584,20 @@ function train(dataset)
       true_neg = #dataset.label - (npos + ntpfn - true_pos)
       trainAccuracy = torch.mean((true_pos + true_neg) / #dataset.label)
       precision = torch.cdiv(true_pos, npos)
+      precision[precision:ne(precision)] = 0  -- % avoid nan values (by convention)
       recall = torch.cdiv(true_pos, ntpfn)
-      macro_f1 = torch.mean(torch.cdiv(2 * torch.cmul(precision, recall), (precision + recall)))
+      recall[recall:ne(recall)] = 0
+      macro_f1 = torch.cdiv(2 * torch.cmul(precision, recall), (precision + recall))
+      macro_f1[macro_f1:ne(macro_f1)] = 0
+      macro_f1 = torch.mean(macro_f1)
       print('Macro F1 Score is '..tostring(macro_f1))
       print('Mean Training Accuracy is '..tostring(trainAccuracy))
-
-      --[[
-      print(precision)
-      print(recall)
-      print(macro_f1)
-      debug.debug()
-      ]]
       true_pos = torch.zeros(opt.nClass):cuda()  -- record the # of true positives in each label
       npos = torch.zeros(opt.nClass):cuda()  -- # of positive predictions
       ntpfn = torch.zeros(opt.nClass):cuda() -- # of true positive and false negative predictions (# of positive examples)
    else
       print(confusion)
-      local trainAccuracy = confusion.totalValid * 100
+      trainAccuracy = confusion.totalValid * 100
       confusion:zero()
    end
    
@@ -657,8 +665,20 @@ function test(dataset, ensembleTest)
       end
       local tmpmax, outputlabels = torch.max(pred, 2)
       if opt.multiLabel then
+         --[[
+         -- setting 1: whenever score > 0.5, predict as positive
          local output_scores = torch.cdiv(torch.exp(pred), (1+torch.exp(pred)))
          local output_labels = (torch.sign(output_scores - 0.5) + 1) / 2
+         ]]
+         -- setting 2: select equal number of positive labels as targets (needs to assume # of labels of each testing data is known)
+         n_target_labels = torch.sum(targets, 2)
+         output_labels = torch.zeros(targets:size()):cuda()
+         for target_i = 1, targets:size(1) do
+            _, pred_i = torch.topk(pred[target_i], n_target_labels[target_i][1], 1, true)
+            pred_i = pred_i:type('torch.LongTensor')
+            output_labels[target_i]:indexFill(1, pred_i, 1)
+         end
+         
          true_pos = true_pos + torch.sum(torch.cmul(output_labels, targets), 1)
          npos = npos + torch.sum(output_labels, 1)
          ntpfn = ntpfn + torch.sum(targets, 1)
@@ -681,16 +701,21 @@ function test(dataset, ensembleTest)
       true_neg = #dataset.label - (npos + ntpfn - true_pos)
       testAccuracy = torch.mean((true_pos + true_neg) / #dataset.label)
       precision = torch.cdiv(true_pos, npos)
+      precision[precision:ne(precision)] = 0  -- % avoid nan values (by convention)
       recall = torch.cdiv(true_pos, ntpfn)
-      macro_f1 = torch.mean(torch.cdiv(2 * torch.cmul(precision, recall), (precision + recall)))
+      recall[recall:ne(recall)] = 0
+      macro_f1 = torch.cdiv(2 * torch.cmul(precision, recall), (precision + recall))
+      macro_f1[macro_f1:ne(macro_f1)] = 0
+      macro_f1 = torch.mean(macro_f1)
       print('Macro F1 Score is '..tostring(macro_f1))
       print('Mean Testing/Validation Accuracy is '..tostring(testAccuracy))
       true_pos = torch.zeros(opt.nClass):cuda()  -- record the # of true positives in each label
       npos = torch.zeros(opt.nClass):cuda()  -- # of positive predictions
       ntpfn = torch.zeros(opt.nClass):cuda() -- # of true positive and false negative predictions (# of positive examples)
+      testError = -macro_f1 -- let the returned testError record the minus F1 score, which is used in selecting best net on validation data
    else
       print(confusion)
-      local testAccuracy = confusion.totalValid * 100
+      testAccuracy = confusion.totalValid * 100
       confusion:zero()
    end
 
@@ -887,16 +912,13 @@ for iter = 1, maxIter do
    
 end
 
-
 -- After running all epochs --
 -- see the performance on testset after all epochs
-print()
 print('Performance on test set after all epochs: ')
 print('train Acc: '..trainAcc..' val Acc: '..valAcc..' test Acc: '..testAcc)
-print()
 
 -- if using validation set, load bestNet and see its performance on testset
-if opt.valRatio ~= 0 then
+if opt.valRatio ~= 0 or opt.testNumber ~= 0 then
    net =  torch.load(filename)
    test(testset)
    print('Best Validation Acc achieved at the '..bestIter..' th iteration:')

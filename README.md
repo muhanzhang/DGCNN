@@ -17,6 +17,8 @@ Run "th main.lua" to have a try of DGCNN!
 How to run DGCNN
 ----------------
 
+Install Torch following this link: http://torch.ch/docs/getting-started.html#_
+
 The folder "data/" contains the .dat graph datasets read by DGCNN. There is already a "MUTAG.dat" included for demo. Other graph datasets need to be generated manually:
 
     th utils/generate_torch_graphs.lua
@@ -25,9 +27,8 @@ which transforms the .mat graph datasets in "data/raw_data/" into .dat format. T
 
     1# OSX
     brew install homebrew/science/libmatio
-     # Ubuntu
+    2# Ubuntu
     sudo apt-get install libmatio2
-    2
     luarocks install --local matio
 
 In case you cannot install "torch.matio", we also provide the converted ".dat" for downloading directly [\[Torch graph datasets\]](https://drive.google.com/open?id=1vx19a8UTfj7vboafaoRtgIFv-dIqvhxl).
@@ -55,7 +56,7 @@ in the torch command line th.
 
 We also provide a "generate_torch_graphs.lua" in "utils/" which converts standard WL kernel toolbox's graph format to DGCNN format.
 
-There is an option "-testNumber 200" in "main.lua", which allows specifying that the last 200 examples in the dataset is the testing data. This is convenient when you stack your testing data after the training data in the dataset.
+There is an option "-testNumber 200" in "main.lua", which allows specifying that the last 200 examples in the dataset is the testing data. This is convenient when you put your testing data after the training data when constructing the dataset.
 
 How to compare with graph kernels
 ---------------------------------
