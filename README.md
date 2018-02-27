@@ -17,7 +17,17 @@ Run "th main.lua" to have a try of DGCNN!
 How to run DGCNN
 ----------------
 
-Install Torch following this link: http://torch.ch/docs/getting-started.html#_
+If you do not have a deep learning environment yet, install cuda and Torch as follows (suppose you have a GPU):
+
+Install cuda following: http://developer.nvidia.com/cuda-downloads
+
+Install Torch following this link: http://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html#post-installation-actions
+
+Then, install necessary Torch libraries: cutorch, cunn, in order by:
+
+    luarocks install --local libraryName
+
+Now, you should be able to run Torch-based neural networks.
 
 The folder "data/" contains the .dat graph datasets read by DGCNN. There is already a "MUTAG.dat" included for demo. Other graph datasets need to be generated manually:
 
@@ -39,7 +49,7 @@ To run DGCNN on dataset "DD" (whose maximum node label is 89), with learning rat
 
 To repeatedly run DGCNN on some dataset using different shuffle orders, you can use the provided run_all.sh script:
 
-    time ./run_all.sh XXX gpu_i
+    time ./run_all.sh XXX i
 
 which runs DGCNN on dataset XXX with the ith GPU of your machine for 100 times, using the shuffle orders stored in "data/shuffle".
 
