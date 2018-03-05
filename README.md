@@ -51,7 +51,7 @@ To repeatedly run DGCNN on some dataset using different shuffle orders, you can 
 
     time ./run_all.sh XXX i
 
-which runs DGCNN on dataset XXX with the ith GPU of your machine for 100 times, using the shuffle orders stored in "data/shuffle".
+which runs DGCNN on dataset XXX with the ith GPU of your machine for 100 times, using the shuffle orders stored in "data/shuffle" (matio is required).
 
 The main program of DGCNN is in "main.lua", please refer to it for more advanced functions to play with!
 
