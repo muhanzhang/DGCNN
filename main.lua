@@ -664,7 +664,7 @@ function test(dataset, ensembleTest)
       
       -- test sample
       local pred = net:forward(inputs)
-      scores[{ {(t-1)*batchSize+1, math.min(t*batchSize, #dataset.label)}}] = pred[{{}, {2}}]
+      scores[{{t, t + batchSize - 1}}] = pred[{{}, {2}}]
       if ensembleTest then 
          Pred[{{t, t + batchSize - 1}, {}}] = pred
       end
