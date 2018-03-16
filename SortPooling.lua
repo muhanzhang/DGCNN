@@ -1,6 +1,7 @@
 -- SortPooling layer implementation --
 -- -k: pooling parameter, number of vertices to keep
 -- -sortChannel: sort vertices according to this feature channel
+-- Note that for efficiency reason, we do not break ties by further sorting other channels.
 --
 -- *author: Muhan Zhang, Washington University in St. Louis
 

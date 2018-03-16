@@ -41,15 +41,15 @@ do
 
     ;;
     COLLAB)
-      th main.lua -dataName COLLAB -nClass 3 -learningRate 1e-4 -fixed_shuffle "${i}_${j}" -maxEpoch 300 -save "${save}" $common -outputChannels '32 32 32 1' -nodeLabel nDegree -k 130
+      th main.lua -dataName COLLAB -nClass 3 -learningRate 1e-4 -fixed_shuffle "${i}_${j}" -maxEpoch 300 -save "${save}" $common -outputChannels '32 32 32 1' -nodeLabel nDegree -k 0.9
 
     ;;
     IMDBBINARY)
-      th main.lua -dataName IMDBBINARY -learningRate 1e-4 -fixed_shuffle "${i}_${j}" -maxEpoch 300 -save "${save}" $common -nodeLabel nDegree -k 31 -outputChannels '32 32 32 1'
+      th main.lua -dataName IMDBBINARY -learningRate 1e-4 -fixed_shuffle "${i}_${j}" -maxEpoch 300 -save "${save}" $common -nodeLabel nDegree -k 0.9 -outputChannels '32 32 32 1'
 
     ;;
     IMDBMULTI)
-      th main.lua -dataName IMDBMULTI -nClass 3 -learningRate 1e-4 -fixed_shuffle "${i}_${j}" -maxEpoch 500 -save "${save}" $common -outputChannels '32 32 32 1' -nodeLabel nDegree -k 22
+      th main.lua -dataName IMDBMULTI -nClass 3 -learningRate 1e-4 -fixed_shuffle "${i}_${j}" -maxEpoch 500 -save "${save}" $common -outputChannels '32 32 32 1' -nodeLabel nDegree -k 0.9
 
     ;;
     *) echo 'Dataset does not exist.'

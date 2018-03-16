@@ -54,7 +54,7 @@ local function commandLine()
    -- SortPooling options
    cmd:option('-noSortPooling',   false,         'no SortPooling, performs only pooling without sorting.')
    cmd:option('-sumNodeFeatures', false,         'no SortPooling, direclty sum node features followed by only dense layers.')
-   cmd:option('-k',               0.4,           'Specify the integer k (how many nodes to keep) in SortPooling. If you set 0 < k <= 1, then k will be converted to an integer so that k% graphs in the dataset has nodes more than this integer.')
+   cmd:option('-k',               0.6,           'Specify the integer k (how many nodes to keep) in SortPooling. If you set 0 < k <= 1, then k will be converted to an integer so that k% graphs in the dataset have nodes less than this integer. Set k=1 so that k becomes the maximum node number among all graphs')
    -- 1-D convolution and fully-connected layers' settings
    cmd:option('-TCChannels',      '16 32',       'Specify the # of channels of the 1-D temporal convolution layers')
    cmd:option('-TCkw',            '0 5',         'Specify the kernel width of temporal convolution layers, 0 means to use the total # of outputChannels of the effective GraphConv layers (only for first layer)')
@@ -194,7 +194,6 @@ local function commandLine()
    else
       error('unknown optimization method')
    end
-
 
    return opt
 end
@@ -360,8 +359,10 @@ local function load_data(opt)
    local Ns = torch.zeros(N) -- record the size of each graph
    for i = 1, Ntrain do
       trainset.instance[i] = dataset.instance[shuffle_idx[i]]
+      trainset.instance[i][1] = trainset.instance[i][1]:type('torch.FloatTensor')
+      trainset.instance[i][2] = trainset.instance[i][2]:type('torch.FloatTensor')
       trainset.instance[i][2] = processNodeLabel(trainset.instance[i][2], trainset.instance[i][1])
-      trainset.instance[i][1] = convMatrix(trainset.instance[i][1]:type('torch.FloatTensor'))
+      trainset.instance[i][1] = convMatrix(trainset.instance[i][1])
       trainset.label[i] = dataset.label[shuffle_idx[i]]
       local tmp = trainset.instance[i][1]:size(1)  -- ns: for recording the sizes of graphs
       trainset.ns[i] = tmp
@@ -369,8 +370,10 @@ local function load_data(opt)
    end
    for i = Ntrain+1, Ntrain+Nvalidation do
       valset.instance[i - Ntrain] = dataset.instance[shuffle_idx[i]]
+      valset.instance[i - Ntrain][1] = valset.instance[i - Ntrain][1]:type('torch.FloatTensor')
+      valset.instance[i - Ntrain][2] = valset.instance[i - Ntrain][2]:type('torch.FloatTensor')
       valset.instance[i - Ntrain][2] = processNodeLabel(valset.instance[i - Ntrain][2], valset.instance[i - Ntrain][1])
-      valset.instance[i - Ntrain][1] = convMatrix(valset.instance[i - Ntrain][1]:type('torch.FloatTensor'))
+      valset.instance[i - Ntrain][1] = convMatrix(valset.instance[i - Ntrain][1])
       valset.label[i - Ntrain] = dataset.label[shuffle_idx[i]]
       local tmp = valset.instance[i - Ntrain][1]:size(1)
       valset.ns[i - Ntrain] = tmp
@@ -378,18 +381,20 @@ local function load_data(opt)
    end
    for i = Ntrain+Nvalidation+1, N do
       testset.instance[i - Ntrain - Nvalidation] = dataset.instance[shuffle_idx[i]]
+      testset.instance[i - Ntrain - Nvalidation][1] = testset.instance[i - Ntrain - Nvalidation][1]:type('torch.FloatTensor')
+      testset.instance[i - Ntrain - Nvalidation][2] = testset.instance[i - Ntrain - Nvalidation][2]:type('torch.FloatTensor')
       testset.instance[i - Ntrain - Nvalidation][2] = processNodeLabel(testset.instance[i - Ntrain - Nvalidation][2], testset.instance[i - Ntrain - Nvalidation][1])
-      testset.instance[i - Ntrain - Nvalidation][1] = convMatrix(testset.instance[i - Ntrain - Nvalidation][1]:type('torch.FloatTensor'))
+      testset.instance[i - Ntrain - Nvalidation][1] = convMatrix(testset.instance[i - Ntrain - Nvalidation][1])
       testset.label[i - Ntrain - Nvalidation] = dataset.label[shuffle_idx[i]]
       local tmp = testset.instance[i - Ntrain - Nvalidation][1]:size(1)
       testset.ns[i - Ntrain - Nvalidation] = tmp
       Ns[i] = tmp
    end
-   if opt.k < 1 then
+   if opt.k <= 1 then
       local tmp = torch.sort(Ns)
-      opt.k = tmp[math.ceil((1-opt.k) * N)]
+      opt.k = tmp[math.ceil(opt.k * N)]
       -- erratum --
-      -- In paper, I said k is set so that 60% graphs have #nodes > k, which should be 40% there.
+      -- In paper, I said "k is set so that 60% graphs have #nodes > k", which should have been "k is set so that 60% graphs have #nodes < k"
    end
    if opt.k < 10 then opt.k = 10 end  -- set a lower bound for k, otherwise making 1D convolution infeasible (a small k may result in a negative number of frames after 1D convolutions)
 
@@ -817,6 +822,7 @@ if opt.debug then
    sp1 = modus[4]
 end
 
+print('The k used in SortPooling is: '..tostring(opt.k))
 
 for iter = 1, maxIter do
    print('<<' .. opt.dataName .. '>>')
@@ -923,7 +929,6 @@ if opt.valRatio ~= 0 or opt.testNumber ~= 0 then
    test(testset)
    print('Best Validation Acc achieved at the '..bestIter..' th iteration:')
    print('train Acc: '..bestTrainAcc..' val Acc: '..bestValAcc..' test Acc: '..bestTestAcc)
-   print('The k used is: '..tostring(opt.k))
 end
 
 -- if using ensemble, load each interNet and calculate their ensemble prediction performance
