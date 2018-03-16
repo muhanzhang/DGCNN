@@ -47,6 +47,8 @@ To run DGCNN on dataset "DD" (whose maximum node label is 89), with learning rat
 
     th main.lua -dataName DD -maxNodeLabel 89 -learningRate 1e-5 -maxEpoch 100
 
+Append "-batch -batchSize 16" to run mini-batch optimization.
+
 To repeatedly run DGCNN on some dataset using different shuffle orders, you can use the provided run_all.sh script:
 
     time ./run_all.sh XXX i
