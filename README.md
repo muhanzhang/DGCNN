@@ -1,6 +1,11 @@
 Deep Graph Convolutional Neural Network (DGCNN)
 ===============================================
 
+Update 3/19/2018
+----------------
+
+The PyTorch implementation of DGCNN is here https://github.com/muhanzhang/pytorch_DGCNN, for those who prefer using python.
+
 About
 -----
 
