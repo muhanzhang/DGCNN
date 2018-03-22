@@ -65,7 +65,7 @@ The main program of DGCNN is in "main.lua", please refer to it for more advanced
 How to use your own datasets
 ----------------------------
 
-DGCNN reads graph dataset in the format of dataset = {instance={i: {1: A_i, 2: x_i}}, label={i: label_i}}. You can check the format type:
+DGCNN reads graph dataset in the format of dataset = {instance={i: {1: A_i, 2: X_i}}, label={i: label_i}}. You can check the format type:
 
     dataset = torch.load("data/MUTAG.dat")
 
