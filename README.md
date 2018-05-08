@@ -13,7 +13,7 @@ A powerful deep neural network toolbox for graph classification, named Deep-Grap
 
 For more information, please refer to:
 > M. Zhang,  Z. Cui,  M. Neumann,  and Y. Chen,  An End-to-End Deep Learning Architecture for
-Graph Classification,  Proc. AAAI Conference on Artificial Intelligence (AAAI-18). [\[Preprint\]](http://www.cse.wustl.edu/~muhan/papers/AAAI_2018_DGCNN.pdf)
+Graph Classification,  Proc. AAAI Conference on Artificial Intelligence (AAAI-18). [\[PDF\]](http://www.cse.wustl.edu/~muhan/papers/AAAI_2018_DGCNN.pdf)
 
 The DGCNN is written in Torch. MATLAB is required if you want to compare DGCNN with graph kernels.
 
