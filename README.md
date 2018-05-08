@@ -117,12 +117,14 @@ Reference
 ---------
 
 If you find the code useful, please cite our paper:
-
-    @inproceedings{zhang2018end,
-      title={An End-to-End Deep Learning Architecture for Graph Classification.},
-      author={Zhang, Muhan and Cui, Zhicheng and Neumann, Marion and Chen, Yixin},
-      booktitle={AAAI},
-      year={2018}
+    
+    @paper{AAAI1817146,
+        author = {Muhan Zhang and Zhicheng Cui and Marion Neumann and Yixin Chen},
+        title = {An End-to-End Deep Learning Architecture for Graph Classification},
+        conference = {AAAI Conference on Artificial Intelligence},
+        year = {2018},
+        keywords = {graph classification; graph neural networks; graph kernel},
+        url = {https://www.aaai.org/ocs/index.php/AAAI/AAAI18/paper/view/17146/16755}
     }
 
 Muhan Zhang, muhan@wustl.edu
