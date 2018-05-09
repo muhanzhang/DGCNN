@@ -795,6 +795,8 @@ errLogger = optim.Logger(paths.concat(opt.save, opt.dataName, 'error.log'   ))
 -- training and testing
 valAcc = 0
 valErr = 0
+testAcc = 0
+testErr = 0
 bestValAcc = 0
 bestTrainAcc = 0
 bestValErr = math.huge
