@@ -30,6 +30,7 @@ local function commandLine()
    -- general options
    cmd:option('-seed', 		      100,           'fixed input seed for repeatable experiments')
    cmd:option('-debug', 	      false,         'debug mode (output intermediate results after each training epoch)')
+   cmd:option('-testAfterAll',    false,         'if true, only perform testing after all epochs are finished; otherwise test every epoch')
    cmd:option('-fixed_shuffle',   'random',      'x_y means using data/shuffle/$dataNamex_y.mat as fixed shuffle indices; otherwise "random" means using random shuffle indices, "original" means using original order of the dataset (no shuffle at first)')
    cmd:option('-ensemble',        0,             'if x~=0, use the intermediate nets every x epochs as an ensemble. Using ensemble needs to set -valRatio 0')
    cmd:option('-multiLabel',      false,         'true when doing multi-label classification, use the multi-label one vs all cross entropy loss')
@@ -700,6 +701,13 @@ function test(dataset, ensembleTest)
    -- testing error estimation
    testError = testError / #dataset.label
    print('test/val error: '..testError)
+
+   -- save prediction scores to file
+   tmp = io.open(paths.concat(opt.save, opt.dataName, 'scores'), 'w');
+   for row = 1, scores:size(1) do
+      tmp:write(scores[row], '\n')
+   end
+   tmp:close()
    
    -- print confusion matrix
    if opt.multiLabel then
@@ -865,10 +873,12 @@ for iter = 1, maxIter do
       valAcc, valErr = test(valset)
    end
 
-   timer = torch.Timer()
-   -- test on testset
-   testAcc, testErr = test(testset)
-   print('Time for test dataset: ' .. timer:time().real .. ' seconds')
+   if not opt.testAfterAll or iter == maxIter then
+      timer = torch.Timer()
+      -- test on testset
+      testAcc, testErr = test(testset)
+      print('Time for test dataset: ' .. timer:time().real .. ' seconds')
+   end
 
    counter = counter + 1
 
@@ -926,7 +936,10 @@ print('train Acc: '..trainAcc..' val Acc: '..valAcc..' test Acc: '..testAcc)
 -- if using validation set, load bestNet and see its performance on testset
 if opt.valRatio ~= 0 or opt.testNumber ~= 0 then
    net =  torch.load(filename)
+   -- test on testset
+   timer = torch.Timer()
    test(testset)
+   print('Final inference time on test set: ' .. timer:time().real .. ' seconds')
    print('Best Validation Acc achieved at the '..bestIter..' th iteration:')
    print('train Acc: '..bestTrainAcc..' val Acc: '..bestValAcc..' test Acc: '..bestTestAcc)
 end
